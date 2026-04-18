@@ -1,86 +1,79 @@
-"""CLI entry point for envault."""
-
+"""Main CLI entry point for envault."""
 import click
-from pathlib import Path
-
 from envault.vault import Vault
 from envault.backends import get_backend
-from envault import audit
 
 
-def make_vault(ctx: click.Context) -> Vault:
-    backend = get_backend(ctx.obj["backend"], **ctx.obj.get("backend_opts", {}))
-    return Vault(backend, ctx.obj["passphrase"])
+def make_vault(env_dir: str, passphrase: str) -> Vault:
+    backend = get_backend(env_dir)
+    return Vault(backend=backend, passphrase=passphrase)
 
 
 @click.group()
-@click.option("--passphrase", envvar="ENVAULT_PASSPHRASE", required=True, help="Encryption passphrase")
-@click.option("--backend", default="local", show_default=True, help="Backend type: local or s3")
-@click.option("--path", "backend_path", default=".envault-store", show_default=True)
-@click.pass_context
-def cli(ctx, passphrase, backend, backend_path):
-    ctx.ensure_object(dict)
-    ctx.obj["passphrase"] = passphrase
-    ctx.obj["backend"] = backend
-    ctx.obj["backend_opts"] = {"path": backend_path}
+def cli():
+    """envault — encrypt and manage .env files."""
 
 
 @cli.command()
-@click.argument("env_file", type=click.Path(exists=True))
-@click.option("--key", default=None, help="Override storage key")
-@click.pass_context
-def push(ctx, env_file, key):
-    """Encrypt and upload an env file."""
-    vault = make_vault(ctx)
-    storage_key = vault.push(Path(env_file), key=key)
-    click.echo(f"Pushed: {storage_key}")
+@click.argument("file", type=click.Path(exists=True))
+@click.option("--dir", "env_dir", default=".", show_default=True)
+@click.option("--passphrase", prompt=True, hide_input=True)
+@click.option("--key", default=None)
+def push(file, env_dir, passphrase, key):
+    """Encrypt and push a .env file."""
+    vault = make_vault(env_dir, passphrase)
+    with open(file) as f:
+        content = f.read()
+    stored_key = vault.push(content, key=key)
+    click.echo(f"Pushed as '{stored_key}'.")
 
 
 @cli.command()
 @click.argument("key")
-@click.option("--output", "-o", default=None, type=click.Path(), help="Write plaintext to file")
-@click.pass_context
-def pull(ctx, key, output):
-    """Download and decrypt an env file."""
-    vault = make_vault(ctx)
-    plaintext = vault.pull(key, output=Path(output) if output else None)
-    if not output:
-        click.echo(plaintext)
+@click.option("--dir", "env_dir", default=".", show_default=True)
+@click.option("--passphrase", prompt=True, hide_input=True)
+@click.option("--output", "-o", default=None)
+def pull(key, env_dir, passphrase, output):
+    """Decrypt and pull a .env file."""
+    vault = make_vault(env_dir, passphrase)
+    content = vault.pull(key)
+    if output:
+        with open(output, "w") as f:
+            f.write(content)
+        click.echo(f"Written to {output}.")
+    else:
+        click.echo(content)
 
 
-@cli.command(name="list")
-@click.pass_context
-def list_envs(ctx):
-    """List stored env keys."""
-    vault = make_vault(ctx)
+@cli.command("list")
+@click.option("--dir", "env_dir", default=".", show_default=True)
+@click.option("--passphrase", prompt=True, hide_input=True)
+def list_envs(env_dir, passphrase):
+    """List stored environment keys."""
+    vault = make_vault(env_dir, passphrase)
     keys = vault.list_envs()
     if not keys:
-        click.echo("No envs stored.")
-    for k in keys:
-        click.echo(k)
+        click.echo("No environments stored.")
+    else:
+        for k in keys:
+            click.echo(k)
 
 
-@cli.command()
-@click.argument("key")
-@click.pass_context
-def delete(ctx, key):
-    """Delete a stored env by key."""
-    vault = make_vault(ctx)
-    vault.delete(key)
-    click.echo(f"Deleted: {key}")
+# Register sub-command groups
+from envault.cli_rotate import rotate  # noqa: E402
+from envault.cli_diff import diff  # noqa: E402
+from envault.cli_export import export  # noqa: E402
+from envault.cli_tags import tags  # noqa: E402
+from envault.cli_lock import lock  # noqa: E402
+from envault.cli_history import history  # noqa: E402
+from envault.cli_search import search  # noqa: E402
+from envault.cli_snapshot import snapshot  # noqa: E402
 
-
-@cli.command(name="audit-log")
-@click.option("--clear", is_flag=True, help="Clear the audit log")
-def audit_log(clear):
-    """View or clear the audit log."""
-    if clear:
-        audit.clear_log()
-        click.echo("Audit log cleared.")
-        return
-    events = audit.read_events()
-    if not events:
-        click.echo("No audit events found.")
-        return
-    for e in events:
-        click.echo(f"{e['timestamp']}  {e['action']:8s}  {e['key']}  ({e['user']} via {e['backend']})")
+cli.add_command(rotate)
+cli.add_command(diff)
+cli.add_command(export)
+cli.add_command(tags)
+cli.add_command(lock)
+cli.add_command(history)
+cli.add_command(search)
+cli.add_command(snapshot)
