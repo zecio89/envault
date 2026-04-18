@@ -39,3 +39,13 @@ class LocalBackend(BaseBackend):
 
     def exists(self, key: str) -> bool:
         return self._key_path(key).exists()
+
+    def rename(self, old_key: str, new_key: str) -> None:
+        """Rename a stored key by moving its file to the new key path."""
+        old_path = self._key_path(old_key)
+        if not old_path.exists():
+            raise FileNotFoundError(f"Key '{old_key}' not found in local backend.")
+        new_path = self._key_path(new_key)
+        if new_path.exists():
+            raise FileExistsError(f"Key '{new_key}' already exists in local backend.")
+        old_path.rename(new_path)
