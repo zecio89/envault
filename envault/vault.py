@@ -1,66 +1,49 @@
-"""Vault: high-level encrypt/decrypt operations over a backend."""
-
-from pathlib import Path
+"""Vault: high-level push/pull/list with optional history recording."""
+from __future__ import annotations
 from typing import List, Optional
 
 from envault.crypto import encrypt, decrypt
 from envault.backends.base import BaseBackend
-from envault import audit
 
 
 class Vault:
-    def __init__(self, backend: BaseBackend, passphrase: str):
+    def __init__(self, backend: BaseBackend, passphrase: str) -> None:
         self.backend = backend
         self.passphrase = passphrase
 
     def push(
         self,
-        env_file: Path,
+        plaintext: str,
         key: Optional[str] = None,
-        audit_log: bool = True,
+        actor: str = "unknown",
+        note: str = "",
+        track_history: bool = True,
     ) -> str:
-        """Encrypt and upload an env file. Returns the storage key."""
-        plaintext = env_file.read_text()
-        ciphertext = encrypt(plaintext, self.passphrase)
-        storage_key = key or env_file.name
-        self.backend.upload(storage_key, ciphertext)
-        if audit_log:
-            audit.log_event(
-                "push",
-                storage_key,
-                backend=type(self.backend).__name__,
-            )
-        return storage_key
+        """Encrypt and upload plaintext; optionally record version history."""
+        blob = encrypt(plaintext, self.passphrase)
+        if key is None:
+            import hashlib
+            key = hashlib.sha256(blob.encode()).hexdigest()[:16]
+        self.backend.upload(key, blob)
+        if track_history:
+            from envault.history import record_version
+            record_version(self.backend, key, blob, actor=actor, note=note)
+        return key
 
-    def pull(
-        self,
-        key: str,
-        output: Optional[Path] = None,
-        audit_log: bool = True,
-    ) -> str:
-        """Download and decrypt an env file. Returns plaintext."""
-        ciphertext = self.backend.download(key)
-        plaintext = decrypt(ciphertext, self.passphrase)
-        if output:
-            output.write_text(plaintext)
-        if audit_log:
-            audit.log_event(
-                "pull",
-                key,
-                backend=type(self.backend).__name__,
-            )
-        return plaintext
+    def pull(self, key: str) -> str:
+        """Download and decrypt the env stored at key."""
+        blob = self.backend.download(key)
+        return decrypt(blob, self.passphrase)
 
     def list_envs(self) -> List[str]:
-        """List all keys stored in the backend."""
-        return self.backend.list_keys()
+        """List all non-metadata keys."""
+        return [
+            k for k in self.backend.list_keys()
+            if not k.startswith(".")
+        ]
 
-    def delete(self, key: str, audit_log: bool = True) -> None:
-        """Delete an env file from the backend."""
+    def delete(self, key: str) -> None:
+        """Delete an env and its history."""
+        from envault.history import clear_history
         self.backend.delete(key)
-        if audit_log:
-            audit.log_event(
-                "delete",
-                key,
-                backend=type(self.backend).__name__,
-            )
+        clear_history(self.backend, key)
