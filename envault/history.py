@@ -2,7 +2,7 @@
 from __future__ import annotations
 import json
 from datetime import datetime, timezone
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from envault.backends.base import BaseBackend
 
@@ -42,6 +42,12 @@ def get_history(backend: BaseBackend, env_key: str) -> List[Dict[str, Any]]:
     if not backend.exists(hk):
         return []
     return json.loads(backend.download(hk))
+
+
+def get_latest_version(backend: BaseBackend, env_key: str) -> Optional[Dict[str, Any]]:
+    """Return the most recent version entry for env_key, or None if no history exists."""
+    history = get_history(backend, env_key)
+    return history[-1] if history else None
 
 
 def restore_version(
