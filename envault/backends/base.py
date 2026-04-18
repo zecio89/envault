@@ -28,3 +28,13 @@ class BaseBackend(ABC):
     def exists(self, key: str) -> bool:
         """Check if a key exists in the backend."""
         ...
+
+    def upload_if_not_exists(self, key: str, data: bytes) -> bool:
+        """Upload data only if the key does not already exist.
+
+        Returns True if the data was uploaded, False if the key already existed.
+        """
+        if self.exists(key):
+            return False
+        self.upload(key, data)
+        return True
