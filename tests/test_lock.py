@@ -45,6 +45,12 @@ def test_unlock_not_locked_raises(populated_backend):
         unlock_env(populated_backend, "prod")
 
 
+def test_lock_already_locked_raises(populated_backend):
+    lock_env(populated_backend, "prod")
+    with pytest.raises(ValueError, match="already locked"):
+        lock_env(populated_backend, "prod")
+
+
 def test_list_locked(populated_backend):
     lock_env(populated_backend, "prod")
     lock_env(populated_backend, "staging")
