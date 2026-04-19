@@ -57,3 +57,25 @@ def test_watch_start_missing_file(runner: CliRunner, env_dir: Path, tmp_path: Pa
         ],
     )
     assert result.exit_code != 0
+
+
+def test_watch_start_passes_env_file_path(runner: CliRunner, env_dir: Path, tmp_path: Path) -> None:
+    """Ensure the correct env file path is forwarded to watch_file."""
+    env_file = tmp_path / "app.env"
+    env_file.write_text("KEY=value\n")
+
+    with mock.patch("envault.cli_watch.watch_file") as mocked:
+        result = runner.invoke(
+            watch,
+            [
+                "start",
+                str(env_file),
+                "--passphrase", "secret",
+                "--backend", "local",
+                "--backend-path", str(env_dir),
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    _, kwargs = mocked.call_args
+    assert Path(kwargs["env_file"]) == env_file
