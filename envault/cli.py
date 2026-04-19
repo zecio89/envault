@@ -1,79 +1,66 @@
-"""Main CLI entry point for envault."""
+"""Main CLI entry-point for envault."""
+from __future__ import annotations
+
 import click
-from envault.vault import Vault
+
 from envault.backends import get_backend
+from envault.vault import Vault
 
 
-def make_vault(env_dir: str, passphrase: str) -> Vault:
-    backend = get_backend(env_dir)
-    return Vault(backend=backend, passphrase=passphrase)
+def make_vault(backend: str, backend_path: str, passphrase: str) -> Vault:
+    b = get_backend(backend, backend_path)
+    return Vault(b, passphrase)
 
 
 @click.group()
-def cli():
-    """envault — encrypt and manage .env files."""
+def cli() -> None:
+    """envault — encrypted .env manager."""
 
 
 @cli.command()
-@click.argument("file", type=click.Path(exists=True))
-@click.option("--dir", "env_dir", default=".", show_default=True)
-@click.option("--passphrase", prompt=True, hide_input=True)
+@click.argument("env_file", type=click.Path(exists=True, dir_okay=False))
 @click.option("--key", default=None)
-def push(file, env_dir, passphrase, key):
-    """Encrypt and push a .env file."""
-    vault = make_vault(env_dir, passphrase)
-    with open(file) as f:
-        content = f.read()
-    stored_key = vault.push(content, key=key)
-    click.echo(f"Pushed as '{stored_key}'.")
+@click.option("--passphrase", prompt=True, hide_input=True)
+@click.option("--backend", default="local", show_default=True)
+@click.option("--backend-path", default=".envault", show_default=True)
+def push(env_file: str, key: str | None, passphrase: str, backend: str, backend_path: str) -> None:
+    """Encrypt and push an .env file."""
+    from pathlib import Path
+    vault = make_vault(backend, backend_path, passphrase)
+    stored_key = vault.push(Path(env_file), key=key)
+    click.echo(f"Pushed → {stored_key}")
 
 
 @cli.command()
 @click.argument("key")
-@click.option("--dir", "env_dir", default=".", show_default=True)
+@click.argument("output", type=click.Path(dir_okay=False))
 @click.option("--passphrase", prompt=True, hide_input=True)
-@click.option("--output", "-o", default=None)
-def pull(key, env_dir, passphrase, output):
-    """Decrypt and pull a .env file."""
-    vault = make_vault(env_dir, passphrase)
-    content = vault.pull(key)
-    if output:
-        with open(output, "w") as f:
-            f.write(content)
-        click.echo(f"Written to {output}.")
-    else:
-        click.echo(content)
+@click.option("--backend", default="local", show_default=True)
+@click.option("--backend-path", default=".envault", show_default=True)
+def pull(key: str, output: str, passphrase: str, backend: str, backend_path: str) -> None:
+    """Pull and decrypt an .env file."""
+    from pathlib import Path
+    vault = make_vault(backend, backend_path, passphrase)
+    vault.pull(key, Path(output))
+    click.echo(f"Pulled {key} → {output}")
 
 
 @cli.command("list")
-@click.option("--dir", "env_dir", default=".", show_default=True)
 @click.option("--passphrase", prompt=True, hide_input=True)
-def list_envs(env_dir, passphrase):
-    """List stored environment keys."""
-    vault = make_vault(env_dir, passphrase)
+@click.option("--backend", default="local", show_default=True)
+@click.option("--backend-path", default=".envault", show_default=True)
+def list_envs(passphrase: str, backend: str, backend_path: str) -> None:
+    """List stored env keys."""
+    vault = make_vault(backend, backend_path, passphrase)
     keys = vault.list_envs()
     if not keys:
-        click.echo("No environments stored.")
+        click.echo("(no envs stored)")
     else:
         for k in keys:
             click.echo(k)
 
 
-# Register sub-command groups
-from envault.cli_rotate import rotate  # noqa: E402
-from envault.cli_diff import diff  # noqa: E402
-from envault.cli_export import export  # noqa: E402
-from envault.cli_tags import tags  # noqa: E402
-from envault.cli_lock import lock  # noqa: E402
-from envault.cli_history import history  # noqa: E402
-from envault.cli_search import search  # noqa: E402
-from envault.cli_snapshot import snapshot  # noqa: E402
+# Register sub-command groups from other CLI modules
+from envault.cli_watch import watch  # noqa: E402
 
-cli.add_command(rotate)
-cli.add_command(diff)
-cli.add_command(export)
-cli.add_command(tags)
-cli.add_command(lock)
-cli.add_command(history)
-cli.add_command(search)
-cli.add_command(snapshot)
+cli.add_command(watch)
