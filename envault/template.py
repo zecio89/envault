@@ -23,6 +23,20 @@ def _parse_env(blob: str) -> dict[str, str]:
     return result
 
 
+def list_template_vars(template: str) -> list[str]:
+    """Return a sorted list of unique variable names referenced in *template*.
+
+    Useful for validating that all required variables are present in an env
+    before attempting a full render.
+
+    Example::
+
+        >>> list_template_vars("Hello {{ NAME }}, your token is {{ TOKEN }}")
+        ['NAME', 'TOKEN']
+    """
+    return sorted(set(_VAR_RE.findall(template)))
+
+
 def render_template(
     template: str,
     backend: BaseBackend,
