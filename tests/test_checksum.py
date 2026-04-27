@@ -49,6 +49,14 @@ def test_record_checksum_missing_key_raises(backend):
         record_checksum(backend, "prod")
 
 
+def test_record_checksum_overwrites_previous(populated_backend):
+    """Re-recording after a blob update should reflect the new checksum."""
+    first = record_checksum(populated_backend, "prod")
+    populated_backend.upload("prod", b"new-encrypted-blob-content")
+    second = record_checksum(populated_backend, "prod")
+    assert first["checksum"] != second["checksum"]
+
+
 # ---------------------------------------------------------------------------
 # get_checksum
 # ---------------------------------------------------------------------------
@@ -94,6 +102,7 @@ def test_delete_checksum_removes_record(populated_backend):
     assert get_checksum(populated_backend, "prod") is None
 
 
-def test_delete_checksum_noop_when_not_recorded(populated_backend):
-    # Should not raise even if no record exists
-    delete_checksum(populated_backend, "prod")
+def test_delete_checksum_idempotent(populated_backend):
+    """Deleting a checksum that does not exist should not raise."""
+    delete_checksum(populated_backend, "prod")  # no record yet
+    assert get_checksum(populated_backend, "prod") is None
